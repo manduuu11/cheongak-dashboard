@@ -661,10 +661,49 @@ export default function Home() {
             </section>
 
             <section className="summary">
-              <div className="stat-card primary"><div className="stat-icon">🏢</div><div className="stat-label">전체 단지</div><div className="stat-value">{aptTotal.toLocaleString()}<span className="stat-unit">개</span></div><div className="stat-sub">조회된 분양단지</div></div>
-              <div className="stat-card heat"><div className="stat-icon">🔴</div><div className="stat-label">접수중</div><div className="stat-value">{liveCount}<span className="stat-unit">개</span></div><div className="stat-sub">지금 바로 청약 가능</div></div>
-              <div className="stat-card ink"><div className="stat-icon">🔜</div><div className="stat-label">접수예정</div><div className="stat-value">{soonCount}<span className="stat-unit">개</span></div><div className="stat-sub">곧 청약 시작</div></div>
-              <div className="stat-card mint"><div className="stat-icon">🏠</div><div className="stat-label">총 공급세대</div><div className="stat-value">{(totalUnits/1000).toFixed(1)}<span className="stat-unit">천세대</span></div><div className="stat-sub">이번 페이지 기준</div></div>
+              {/* 전체 단지 — 클릭 시 전체 필터 */}
+              <button
+                className="stat-card primary"
+                onClick={() => setAptStatus("전체")}
+                style={{ textAlign:"left", outline: aptStatus==="전체" ? "2px solid var(--primary)" : "none", cursor:"pointer" }}
+              >
+                <div className="stat-icon">🏢</div>
+                <div className="stat-label">전체 단지</div>
+                <div className="stat-value">{aptTotal.toLocaleString()}<span className="stat-unit">개</span></div>
+                <div className="stat-sub">접수중+접수예정</div>
+              </button>
+
+              {/* 접수중 — 클릭 시 접수중 필터 */}
+              <button
+                className="stat-card heat"
+                onClick={() => setAptStatus("접수중")}
+                style={{ textAlign:"left", outline: aptStatus==="접수중" ? "2px solid var(--heat-2)" : "none", cursor:"pointer" }}
+              >
+                <div className="stat-icon">🔴</div>
+                <div className="stat-label">접수중</div>
+                <div className="stat-value">{liveCount}<span className="stat-unit">개</span></div>
+                <div className="stat-sub">지금 바로 청약 가능</div>
+              </button>
+
+              {/* 접수예정 — 클릭 시 접수예정 필터 */}
+              <button
+                className="stat-card ink"
+                onClick={() => setAptStatus("접수예정")}
+                style={{ textAlign:"left", outline: aptStatus==="접수예정" ? "2px solid var(--ink)" : "none", cursor:"pointer" }}
+              >
+                <div className="stat-icon">🔜</div>
+                <div className="stat-label">접수예정</div>
+                <div className="stat-value">{soonCount}<span className="stat-unit">개</span></div>
+                <div className="stat-sub">곧 청약 시작</div>
+              </button>
+
+              {/* 총 공급세대 — 클릭 없음 */}
+              <div className="stat-card mint">
+                <div className="stat-icon">🏠</div>
+                <div className="stat-label">총 공급세대</div>
+                <div className="stat-value">{(totalUnits/1000).toFixed(1)}<span className="stat-unit">천세대</span></div>
+                <div className="stat-sub">이번 페이지 기준</div>
+              </div>
             </section>
 
             <div className="layout">
