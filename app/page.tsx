@@ -427,6 +427,27 @@ function AgeCard({ item, accent }: { item: AgeItem; accent: string }) {
   );
 }
 
+// ── 지역별 구/시/군 전체 목록 ─────────────────
+const REGION_DISTRICTS: Record<string, string[]> = {
+  서울: ["강남구","강동구","강북구","강서구","관악구","광진구","구로구","금천구","노원구","도봉구","동대문구","동작구","마포구","서대문구","서초구","성동구","성북구","송파구","양천구","영등포구","용산구","은평구","종로구","중구","중랑구"],
+  경기: ["가평군","고양시","과천시","광명시","광주시","구리시","군포시","김포시","남양주시","동두천시","부천시","성남시","수원시","시흥시","안산시","안성시","안양시","양주시","양평군","여주시","연천군","오산시","용인시","의왕시","의정부시","이천시","파주시","평택시","포천시","하남시","화성시"],
+  인천: ["강화군","계양구","남동구","동구","미추홀구","부평구","서구","연수구","옹진군","중구"],
+  부산: ["강서구","금정구","기장군","남구","동구","동래구","부산진구","북구","사상구","사하구","서구","수영구","연제구","영도구","중구","해운대구"],
+  대구: ["군위군","남구","달서구","달성군","동구","북구","서구","수성구","중구"],
+  광주: ["광산구","남구","동구","북구","서구"],
+  대전: ["대덕구","동구","서구","유성구","중구"],
+  울산: ["남구","동구","북구","울주군","중구"],
+  세종: ["세종시"],
+  충남: ["계룡시","공주시","금산군","논산시","당진시","보령시","부여군","서산시","서천군","아산시","예산군","천안시","청양군","태안군","홍성군"],
+  충북: ["괴산군","단양군","보은군","영동군","옥천군","음성군","제천시","증평군","진천군","청주시","충주시"],
+  전남: ["강진군","고흥군","곡성군","광양시","구례군","나주시","담양군","목포시","무안군","보성군","순천시","신안군","여수시","영광군","영암군","완도군","장성군","장흥군","진도군","함평군","해남군","화순군"],
+  전북: ["고창군","군산시","김제시","남원시","무주군","부안군","순창군","완주군","익산시","임실군","장수군","전주시","정읍시","진안군"],
+  경남: ["거제시","거창군","고성군","김해시","남해군","밀양시","사천시","산청군","양산시","의령군","진주시","창녕군","창원시","통영시","하동군","함안군","함양군","합천군"],
+  경북: ["경산시","경주시","고령군","구미시","김천시","문경시","봉화군","상주시","성주군","안동시","영덕군","영양군","영주시","영천시","예천군","울릉군","울진군","의성군","청도군","청송군","칠곡군","포항시"],
+  강원: ["강릉시","고성군","동해시","삼척시","속초시","양구군","양양군","영월군","원주시","인제군","정선군","철원군","춘천시","태백시","평창군","홍천군","화천군","횡성군"],
+  제주: ["서귀포시","제주시"],
+};
+
 // ── 메인 ─────────────────────────────────────
 const STATUS_OPTS = ["전체","접수중","접수예정","접수마감"];
 const REGIONS = ["전체","서울","경기","인천","부산","대구","광주","대전","울산","세종","충남","충북","전남","전북","경남","경북","강원","제주"];
@@ -471,7 +492,9 @@ export default function Home() {
     if (tab !== "분양정보") return;
     setAptError("");
     setAptLoading(true);
-    const params = new URLSearchParams({ page: String(aptPage), perPage: "20" });
+    // 특정 지역 선택 시 구 필터링 위해 더 많이 가져옴
+    const perPage = aptRegion !== "전체" ? "100" : "20";
+    const params = new URLSearchParams({ page: String(aptPage), perPage });
     if (aptRegion !== "전체") params.set("region", aptRegion);
     fetch(`/api/apt-list?${params}`)
       .then(async r => {
@@ -521,20 +544,16 @@ export default function Home() {
   useEffect(() => { loadStatData(); }, [loadStatData]);
 
   // ── 구/군/시 추출 유틸 ──────────────────────
-  // "경기도 수원시 팔달구 ..."  → "수원시"
-  // "서울특별시 강남구 개포동..." → "강남구"
-  // 주소를 공백으로 분리해 두 번째 토큰(시/구/군)만 반환
+  // "경기도 수원시 팔달구..." → "수원시"
+  // 주소 두 번째 토큰 추출 (데이터 매칭용)
   function extractDistrict(addr: string): string {
     if (!addr) return "";
-    const parts = addr.trim().split(/\s+/);
-    return parts[1] ?? "";
+    return addr.trim().split(/\s+/)[1] ?? "";
   }
 
-  // 현재 로드된 데이터에서 구/시/군 목록 추출
-  const availDistricts = aptRegion !== "전체"
-    ? Array.from(new Set(
-        aptItems.map(a => extractDistrict(a.HSSPLY_ADRES)).filter(Boolean)
-      )).sort()
+  // 하드코딩 전체 목록 (데이터 유무 무관)
+  const availDistricts: string[] = aptRegion !== "전체"
+    ? (REGION_DISTRICTS[aptRegion] ?? [])
     : [];
 
   // 지역 변경 시 구 초기화
@@ -718,8 +737,30 @@ export default function Home() {
                 {/* 카드 그리드 */}
                 {aptLoading ? (
                   <div className="empty">데이터를 불러오는 중...</div>
-                ) : filteredApts.length === 0 && !aptError ? (
+                ) : aptDistrict === "전체" && filteredApts.length === 0 && !aptError ? (
                   <div className="empty">조회된 단지가 없어요.</div>
+                ) : aptDistrict !== "전체" ? (
+                  /* 구 선택 시: 해당 구 데이터가 있으면 카드, 없으면 빈 안내 */
+                  filteredApts.length > 0 ? (
+                    <div className="card-grid">
+                      {filteredApts.map(apt => (
+                        <AptCard key={apt.HOUSE_MANAGE_NO} apt={apt} onSelect={() => setSelectedApt(apt)} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{
+                      background: "var(--surface)", borderRadius: "var(--r-md)", padding: "48px 24px",
+                      textAlign: "center", boxShadow: "var(--sh-1)",
+                    }}>
+                      <div style={{ fontSize: 32, marginBottom: 12 }}>🏗️</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "var(--ink)", marginBottom: 8 }}>
+                        {aptDistrict} 청약 정보 없음
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--faint)", fontWeight: 600 }}>
+                        현재 {aptDistrict}에 등록된 분양 단지가 없습니다.
+                      </div>
+                    </div>
+                  )
                 ) : (
                   <div className="card-grid">
                     {filteredApts.map(apt => (
@@ -728,8 +769,8 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* 페이지네이션 */}
-                {aptTotal > 20 && (
+                {/* 페이지네이션 — 구 선택 시 숨김 */}
+                {aptTotal > 20 && aptDistrict === "전체" && (
                   <div style={{ display:"flex", justifyContent:"center", gap:8, marginTop:24 }}>
                     <button className="chip" onClick={() => setAptPage(p => Math.max(1, p-1))} disabled={aptPage===1}>← 이전</button>
                     <span style={{ display:"flex", alignItems:"center", fontSize:13, fontWeight:700, color:"var(--text)", padding:"0 8px" }}>
