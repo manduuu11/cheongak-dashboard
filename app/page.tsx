@@ -22,6 +22,7 @@ interface AptItem {
 }
 
 interface CmpetItem {
+  HOUSE_MANAGE_NO: string;
   HOUSE_TY: string;
   SUPLY_HSHLDCO: string;
   REQ_CNT: string;
@@ -613,6 +614,9 @@ export default function Home() {
   const [selectedRegion, setSelectedRegion] = useState<CompItem | null>(null);
   const [regionFilter, setRegionFilter] = useState("전체");
 
+  // 분양정보 탭 경쟁률 랭킹
+  const [cmpetRanking, setCmpetRanking] = useState<Array<{no:string; nm:string; area:string; rate:number}>>([]);
+
   // ESC 키
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
@@ -643,6 +647,35 @@ export default function Home() {
   }, [tab, aptPage, aptRegion]);
 
   useEffect(() => { loadAptData(); }, [loadAptData]);
+
+  // aptItems 로드 후 경쟁률 TOP5 계산 (최근 완료 단지 기준)
+  useEffect(() => {
+    if (aptItems.length === 0) return;
+    fetch(`/api/apt-cmpet?perPage=200`)
+      .then(r => r.json())
+      .then(d => {
+        const raw: CmpetItem[] = d?.data ?? [];
+        // HOUSE_MANAGE_NO별 최대 경쟁률 집계
+        const map = new Map<string, number>();
+        raw.forEach(c => {
+          const rate = parseFloat(c.CMPET_RATE) || 0;
+          if (rate > 0) {
+            const prev = map.get(c.HOUSE_MANAGE_NO) ?? 0;
+            if (rate > prev) map.set(c.HOUSE_MANAGE_NO, rate);
+          }
+        });
+        // aptItems와 조인
+        const ranked = Array.from(map.entries())
+          .map(([no, rate]) => {
+            const apt = aptItems.find(a => a.HOUSE_MANAGE_NO === no);
+            return apt ? { no, nm: apt.HOUSE_NM, area: apt.SUBSCRPT_AREA_CODE_NM, rate } : null;
+          })
+          .filter(Boolean)
+          .sort((a, b) => b!.rate - a!.rate)
+          .slice(0, 5) as Array<{no:string;nm:string;area:string;rate:number}>;
+        if (ranked.length > 0) setCmpetRanking(ranked);
+      }).catch(() => {});
+  }, [aptItems]);
 
   // ── 통계 초기 연월 로드 ─────────────────────
   useEffect(() => {
@@ -973,73 +1006,100 @@ export default function Home() {
 
               {/* 사이드바 */}
               <aside className="col-side">
-                {/* 접수중 단지 */}
+
+                {/* ① 경쟁률 TOP 5 */}
                 <div className="side-card">
-                  <div className="side-head"><span>🔴</span><h4>접수중 단지</h4></div>
+                  <div className="side-head"><span>🏆</span><h4>경쟁률 TOP 5</h4></div>
                   <ul className="rank-list">
-                    {aptItems.filter(a => getStatus(a).label === "접수중").slice(0,5).map((apt, i) => {
-                      const dday = getDday(apt);
+                    {cmpetRanking.length > 0 ? cmpetRanking.map((item, i) => {
+                      const apt = aptItems.find(a => a.HOUSE_MANAGE_NO === item.no);
                       return (
-                        <li key={apt.HOUSE_MANAGE_NO} onClick={() => setSelectedApt(apt)}>
+                        <li key={item.no} onClick={() => apt && setSelectedApt(apt)}>
                           <div className={`rank-no ${i===0?"n1":i===1?"n2":i===2?"n3":""}`}>{i+1}</div>
                           <div className="rank-info">
-                            <strong>{apt.HOUSE_NM}</strong>
-                            <span>{apt.SUBSCRPT_AREA_CODE_NM} · {Number(apt.TOT_SUPLY_HSHLDCO||0).toLocaleString()}세대</span>
+                            <strong>{item.nm}</strong>
+                            <span>{item.area}</span>
                           </div>
-                          {dday && (
-                            <span style={{
-                              fontSize:11, fontWeight:800, padding:"3px 8px", borderRadius:6,
-                              background: dday.urgent ? "var(--heat-1)" : "var(--surface-3)",
-                              color: dday.urgent ? "#fff" : "var(--text)", flexShrink:0,
-                            }}>{dday.text}</span>
-                          )}
+                          <span style={{ fontSize:15, fontWeight:800, color:"var(--ink)", flexShrink:0, fontVariantNumeric:"tabular-nums" }}>
+                            {item.rate}<em style={{ fontSize:11, fontWeight:600, color:"var(--faint)", marginLeft:1 }}>:1</em>
+                          </span>
                         </li>
                       );
-                    })}
-                    {aptItems.filter(a => getStatus(a).label === "접수중").length === 0 && (
-                      <li style={{ padding:"16px 4px", color:"var(--faint)", fontSize:13, fontWeight:600 }}>접수중인 단지 없음</li>
+                    }) : (
+                      <li style={{ padding:"16px 4px", color:"var(--faint)", fontSize:13, fontWeight:600 }}>경쟁률 데이터 로딩 중...</li>
                     )}
                   </ul>
                 </div>
 
-                {/* 마감 임박 — 접수예정만, D-day 가까운 순 */}
+                {/* ② 마감 임박 (접수중 → 종료일 가까운 순) */}
+                {(() => {
+                  const closing = aptItems
+                    .filter(a => getStatus(a).label === "접수중")
+                    .sort((a,b) => (a.RCEPT_ENDDE??'').localeCompare(b.RCEPT_ENDDE??''))
+                    .slice(0, 5);
+                  return (
+                    <div className="side-card">
+                      <div className="side-head"><span>⏰</span><h4>마감 임박</h4></div>
+                      <ul className="rank-list">
+                        {closing.length > 0 ? closing.map((apt, i) => {
+                          const today = new Date(); today.setHours(0,0,0,0);
+                          const end   = apt.RCEPT_ENDDE ? new Date(apt.RCEPT_ENDDE) : null;
+                          const diff  = end ? Math.ceil((end.getTime()-today.getTime())/86400000) : null;
+                          const txt   = diff===null?"-":diff===0?"D-DAY":`D-${diff}`;
+                          const urgent= diff!==null&&diff<=2;
+                          return (
+                            <li key={apt.HOUSE_MANAGE_NO} onClick={()=>setSelectedApt(apt)}>
+                              <div className={`rank-no ${i===0?"n1":i===1?"n2":i===2?"n3":""}`}>{i+1}</div>
+                              <div className="rank-info">
+                                <strong>{apt.HOUSE_NM}</strong>
+                                <span>{apt.SUBSCRPT_AREA_CODE_NM} · {Number(apt.TOT_SUPLY_HSHLDCO||0).toLocaleString()}세대</span>
+                              </div>
+                              <span style={{
+                                fontSize:11, fontWeight:800, padding:"4px 9px", borderRadius:7, flexShrink:0,
+                                background: urgent?"var(--heat-1)":"var(--surface-3)",
+                                color: urgent?"#fff":"var(--text)",
+                              }}>{txt}</span>
+                            </li>
+                          );
+                        }) : (
+                          <li style={{ padding:"16px 4px", color:"var(--faint)", fontSize:13, fontWeight:600 }}>마감 임박 단지 없음</li>
+                        )}
+                      </ul>
+                    </div>
+                  );
+                })()}
+
+                {/* ③ 접수예정 */}
                 {(() => {
                   const upcoming = aptItems
                     .filter(a => getStatus(a).label === "접수예정")
-                    .sort((a, b) => (a.RCEPT_BGNDE ?? "").localeCompare(b.RCEPT_BGNDE ?? ""))
-                    .slice(0, 6);
+                    .sort((a,b) => (a.RCEPT_BGNDE??'').localeCompare(b.RCEPT_BGNDE??''))
+                    .slice(0, 5);
                   if (upcoming.length === 0) return null;
                   return (
                     <div className="side-card">
-                      <div className="side-head"><span>⏰</span><h4>청약 임박</h4></div>
-                      <div className="closing-list">
-                        {upcoming.map(apt => {
+                      <div className="side-head"><span>🔜</span><h4>접수예정</h4></div>
+                      <ul className="rank-list">
+                        {upcoming.map((apt, i) => {
                           const today = new Date(); today.setHours(0,0,0,0);
                           const begin = apt.RCEPT_BGNDE ? new Date(apt.RCEPT_BGNDE) : null;
-                          const diff = begin ? Math.ceil((begin.getTime() - today.getTime()) / 86400000) : null;
-                          const ddayText = diff === null ? "-" : diff === 0 ? "D-DAY" : `D-${diff}`;
-                          const urgent = diff !== null && diff <= 3;
+                          const diff  = begin ? Math.ceil((begin.getTime()-today.getTime())/86400000) : null;
+                          const txt   = diff===null?"-":diff===0?"D-DAY":`D-${diff}`;
                           return (
-                            <div
-                              key={apt.HOUSE_MANAGE_NO}
-                              className="closing-item"
-                              onClick={() => setSelectedApt(apt)}
-                            >
-                              <span style={{
-                                fontSize:11.5, fontWeight:800, padding:"4px 9px", borderRadius:7,
-                                background: urgent ? "var(--heat-1)" : "var(--surface-3)",
-                                color: urgent ? "#fff" : "var(--text)",
-                                flexShrink:0, minWidth:44, textAlign:"center",
-                              }}>{ddayText}</span>
-                              <div className="closing-info">
+                            <li key={apt.HOUSE_MANAGE_NO} onClick={()=>setSelectedApt(apt)}>
+                              <div className="rank-no">{i+1}</div>
+                              <div className="rank-info">
                                 <strong>{apt.HOUSE_NM}</strong>
                                 <span>{apt.SUBSCRPT_AREA_CODE_NM} · {apt.RCEPT_BGNDE?.slice(0,10)} 시작</span>
                               </div>
-                              <span style={{ fontSize:16, color:"var(--line-2)" }}>›</span>
-                            </div>
+                              <span style={{
+                                fontSize:11, fontWeight:800, padding:"4px 9px", borderRadius:7, flexShrink:0,
+                                background:"var(--primary-soft)", color:"var(--primary-strong)",
+                              }}>{txt}</span>
+                            </li>
                           );
                         })}
-                      </div>
+                      </ul>
                     </div>
                   );
                 })()}
