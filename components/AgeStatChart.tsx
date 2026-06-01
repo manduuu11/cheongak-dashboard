@@ -56,7 +56,7 @@ export default function AgeStatChart({ items, loading, title, colors = DEFAULT_C
           <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" />
           <YAxis tick={{ fontSize: 11 }} />
           <Tooltip
-            formatter={(v: number, name: string) => [`${v.toLocaleString()}명`, name]}
+            formatter={(v, name) => [`${Number(v).toLocaleString()}명`, name as string]}
             contentStyle={{ fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />

@@ -52,7 +52,7 @@ export default function CompetitionChart({ items, loading }: Props) {
           <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" />
           <YAxis tick={{ fontSize: 11 }} unit="배" />
           <Tooltip
-            formatter={(v: number, name: string) => [`${v}배`, name]}
+            formatter={(v, name) => [`${Number(v)}배`, name as string]}
             contentStyle={{ fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
