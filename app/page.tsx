@@ -520,19 +520,21 @@ export default function Home() {
 
   useEffect(() => { loadStatData(); }, [loadStatData]);
 
-  // ── 구/군 추출 유틸 ────────────────────────
+  // ── 구/군/시 추출 유틸 ──────────────────────
+  // "경기도 수원시 팔달구 ..."  → "수원시"
   // "서울특별시 강남구 개포동..." → "강남구"
+  // 주소를 공백으로 분리해 두 번째 토큰(시/구/군)만 반환
   function extractDistrict(addr: string): string {
     if (!addr) return "";
-    const match = addr.match(/(\S+[구군])/);
-    return match ? match[1] : "";
+    const parts = addr.trim().split(/\s+/);
+    return parts[1] ?? "";
   }
 
-  // 현재 로드된 데이터에서 구 목록 추출
+  // 현재 로드된 데이터에서 구/시/군 목록 추출
   const availDistricts = aptRegion !== "전체"
-    ? ["전체", ...Array.from(new Set(
+    ? Array.from(new Set(
         aptItems.map(a => extractDistrict(a.HSSPLY_ADRES)).filter(Boolean)
-      )).sort()]
+      )).sort()
     : [];
 
   // 지역 변경 시 구 초기화
@@ -651,22 +653,35 @@ export default function Home() {
                     ))}
                   </div>
 
-                  {/* 구/군 — 시/도 선택 시만 표시 */}
-                  {availDistricts.length > 1 && (
-                    <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"nowrap", overflowX:"auto", paddingBottom:2 }}>
-                      <span style={{ fontSize:12, fontWeight:700, color:"var(--faint)", flexShrink:0 }}>구·군</span>
-                      <div style={{ display:"flex", gap:6, flexWrap:"nowrap" }}>
+                  {/* 구/시/군 — 시/도 선택 시 아래로 펼쳐짐 */}
+                  {availDistricts.length > 0 && (
+                    <div style={{
+                      borderTop: "1px solid var(--line)",
+                      paddingTop: 12,
+                      animation: "fadeIn .2s ease",
+                    }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--faint)", marginBottom: 8, letterSpacing: ".02em" }}>
+                        {aptRegion} · 구/시/군 선택
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {/* 전체 칩 */}
+                        <button
+                          onClick={() => setAptDistrict("전체")}
+                          className={"chip" + (aptDistrict === "전체" ? " on" : "")}
+                          style={{ fontSize: 13 }}
+                        >
+                          전체
+                        </button>
                         {availDistricts.map(d => (
                           <button
                             key={d}
                             onClick={() => setAptDistrict(d)}
                             style={{
-                              fontSize: 12.5, fontWeight: 600, padding: "5px 11px",
+                              fontSize: 13, fontWeight: 600, padding: "6px 13px",
                               borderRadius: 20, whiteSpace: "nowrap", cursor: "pointer",
                               background: aptDistrict === d ? "var(--primary)" : "var(--primary-soft)",
                               color: aptDistrict === d ? "#fff" : "var(--primary-strong)",
                               border: "none", transition: ".15s",
-                              flexShrink: 0,
                             }}
                           >
                             {d}
