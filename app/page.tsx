@@ -66,16 +66,14 @@ function fmtDate(s: string) {
   return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
 }
 
-// "046.8800" → "46㎡"  /  "084.9543T" → "84㎡T"  /  "059.9500A" → "59㎡A"
+// "046.8800" → "46㎡"  /  "084.9543T" → "84㎡T"  /  "074.9671A" → "74㎡A"
 function fmtHouseTy(ty: string): string {
   if (!ty) return ty;
-  const m = ty.match(/^0*(\d+)\.(\d+)([A-Z]*)$/);
+  const m = ty.match(/^0*(\d+)(?:\.\d+)?([A-Z]*)$/);
   if (!m) return ty;
-  const area  = parseInt(m[1]);          // 앞자리 (046 → 46)
-  const deci  = parseFloat(`0.${m[2]}`); // 소수점
-  const suffix= m[3];                    // 알파벳 (A, B, T 등)
-  const display = (deci > 0 && deci < 1) ? `${area}.${m[2].replace(/0+$/, "")}` : `${area}`;
-  return `${display}㎡${suffix}`;
+  const area   = parseInt(m[1]);  // 정수 면적만 (046 → 46)
+  const suffix = m[2] ?? "";      // 타입 구분 알파벳 (A, B, T 등)
+  return `${area}㎡${suffix}`;
 }
 
 function getStatus(apt: AptItem): { label: string; cls: string } {
