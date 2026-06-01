@@ -838,37 +838,76 @@ export default function Home() {
 
               {/* 사이드바 */}
               <aside className="col-side">
+                {/* 접수중 단지 */}
                 <div className="side-card">
                   <div className="side-head"><span>🔴</span><h4>접수중 단지</h4></div>
                   <ul className="rank-list">
-                    {aptItems.filter(a => getStatus(a).label === "접수중").slice(0,5).map((apt, i) => (
-                      <li key={apt.HOUSE_MANAGE_NO} onClick={() => setSelectedApt(apt)}>
-                        <div className={`rank-no ${i===0?"n1":i===1?"n2":i===2?"n3":""}`}>{i+1}</div>
-                        <div className="rank-info">
-                          <strong>{apt.HOUSE_NM}</strong>
-                          <span>{apt.SUBSCRPT_AREA_CODE_NM} · {Number(apt.TOT_SUPLY_HSHLDCO||0).toLocaleString()}세대</span>
-                        </div>
-                      </li>
-                    ))}
+                    {aptItems.filter(a => getStatus(a).label === "접수중").slice(0,5).map((apt, i) => {
+                      const dday = getDday(apt);
+                      return (
+                        <li key={apt.HOUSE_MANAGE_NO} onClick={() => setSelectedApt(apt)}>
+                          <div className={`rank-no ${i===0?"n1":i===1?"n2":i===2?"n3":""}`}>{i+1}</div>
+                          <div className="rank-info">
+                            <strong>{apt.HOUSE_NM}</strong>
+                            <span>{apt.SUBSCRPT_AREA_CODE_NM} · {Number(apt.TOT_SUPLY_HSHLDCO||0).toLocaleString()}세대</span>
+                          </div>
+                          {dday && (
+                            <span style={{
+                              fontSize:11, fontWeight:800, padding:"3px 8px", borderRadius:6,
+                              background: dday.urgent ? "var(--heat-1)" : "var(--surface-3)",
+                              color: dday.urgent ? "#fff" : "var(--text)", flexShrink:0,
+                            }}>{dday.text}</span>
+                          )}
+                        </li>
+                      );
+                    })}
                     {aptItems.filter(a => getStatus(a).label === "접수중").length === 0 && (
                       <li style={{ padding:"16px 4px", color:"var(--faint)", fontSize:13, fontWeight:600 }}>접수중인 단지 없음</li>
                     )}
                   </ul>
                 </div>
-                <div className="side-card">
-                  <div className="side-head"><span>🔜</span><h4>접수예정 단지</h4></div>
-                  <ul className="rank-list">
-                    {aptItems.filter(a => getStatus(a).label === "접수예정").slice(0,5).map((apt, i) => (
-                      <li key={apt.HOUSE_MANAGE_NO} onClick={() => setSelectedApt(apt)}>
-                        <div className="rank-no">{i+1}</div>
-                        <div className="rank-info">
-                          <strong>{apt.HOUSE_NM}</strong>
-                          <span>{apt.RCEPT_BGNDE?.slice(0,10)} 시작</span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+
+                {/* 마감 임박 — 접수예정만, D-day 가까운 순 */}
+                {(() => {
+                  const upcoming = aptItems
+                    .filter(a => getStatus(a).label === "접수예정")
+                    .sort((a, b) => (a.RCEPT_BGNDE ?? "").localeCompare(b.RCEPT_BGNDE ?? ""))
+                    .slice(0, 6);
+                  if (upcoming.length === 0) return null;
+                  return (
+                    <div className="side-card">
+                      <div className="side-head"><span>⏰</span><h4>청약 임박</h4></div>
+                      <div className="closing-list">
+                        {upcoming.map(apt => {
+                          const today = new Date(); today.setHours(0,0,0,0);
+                          const begin = apt.RCEPT_BGNDE ? new Date(apt.RCEPT_BGNDE) : null;
+                          const diff = begin ? Math.ceil((begin.getTime() - today.getTime()) / 86400000) : null;
+                          const ddayText = diff === null ? "-" : diff === 0 ? "D-DAY" : `D-${diff}`;
+                          const urgent = diff !== null && diff <= 3;
+                          return (
+                            <div
+                              key={apt.HOUSE_MANAGE_NO}
+                              className="closing-item"
+                              onClick={() => setSelectedApt(apt)}
+                            >
+                              <span style={{
+                                fontSize:11.5, fontWeight:800, padding:"4px 9px", borderRadius:7,
+                                background: urgent ? "var(--heat-1)" : "var(--surface-3)",
+                                color: urgent ? "#fff" : "var(--text)",
+                                flexShrink:0, minWidth:44, textAlign:"center",
+                              }}>{ddayText}</span>
+                              <div className="closing-info">
+                                <strong>{apt.HOUSE_NM}</strong>
+                                <span>{apt.SUBSCRPT_AREA_CODE_NM} · {apt.RCEPT_BGNDE?.slice(0,10)} 시작</span>
+                              </div>
+                              <span style={{ fontSize:16, color:"var(--line-2)" }}>›</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </aside>
             </div>
           </>
