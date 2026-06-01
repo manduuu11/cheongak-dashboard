@@ -440,7 +440,8 @@ export default function Home() {
   const [aptError,     setAptError]     = useState("");
   const [aptPage,      setAptPage]      = useState(1);
   const [aptTotal,     setAptTotal]     = useState(0);
-  const [aptRegion,    setAptRegion]    = useState("전체");
+  const [aptRegion,    setAptRegion]    = useState("전체");  // 시/도
+  const [aptDistrict,  setAptDistrict]  = useState("전체");  // 구/군
   const [aptStatus,    setAptStatus]    = useState("전체");
   const [aptQuery,     setAptQuery]     = useState("");
   const [selectedApt,  setSelectedApt]  = useState<AptItem | null>(null);
@@ -519,11 +520,34 @@ export default function Home() {
 
   useEffect(() => { loadStatData(); }, [loadStatData]);
 
+  // ── 구/군 추출 유틸 ────────────────────────
+  // "서울특별시 강남구 개포동..." → "강남구"
+  function extractDistrict(addr: string): string {
+    if (!addr) return "";
+    const match = addr.match(/(\S+[구군])/);
+    return match ? match[1] : "";
+  }
+
+  // 현재 로드된 데이터에서 구 목록 추출
+  const availDistricts = aptRegion !== "전체"
+    ? ["전체", ...Array.from(new Set(
+        aptItems.map(a => extractDistrict(a.HSSPLY_ADRES)).filter(Boolean)
+      )).sort()]
+    : [];
+
+  // 지역 변경 시 구 초기화
+  const handleRegionChange = (region: string) => {
+    setAptRegion(region);
+    setAptDistrict("전체");
+    setAptPage(1);
+  };
+
   // ── 분양정보 필터 ───────────────────────────
   const filteredApts = aptItems.filter(apt => {
     const st = getStatus(apt).label;
     if (aptStatus !== "전체" && st !== aptStatus) return false;
     if (aptQuery && !apt.HOUSE_NM.includes(aptQuery) && !apt.HSSPLY_ADRES?.includes(aptQuery)) return false;
+    if (aptDistrict !== "전체" && extractDistrict(apt.HSSPLY_ADRES) !== aptDistrict) return false;
     return true;
   });
 
@@ -620,11 +644,37 @@ export default function Home() {
                     />
                     {aptQuery && <button onClick={() => setAptQuery("")} style={{ color:"var(--faint)", fontSize:20 }}>×</button>}
                   </div>
+                  {/* 시/도 */}
                   <div className="filter-chips">
                     {REGIONS.map(r => (
-                      <button key={r} className={"chip"+(aptRegion===r?" on":"")} onClick={() => { setAptRegion(r); setAptPage(1); }}>{r}</button>
+                      <button key={r} className={"chip"+(aptRegion===r?" on":"")} onClick={() => handleRegionChange(r)}>{r}</button>
                     ))}
                   </div>
+
+                  {/* 구/군 — 시/도 선택 시만 표시 */}
+                  {availDistricts.length > 1 && (
+                    <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"nowrap", overflowX:"auto", paddingBottom:2 }}>
+                      <span style={{ fontSize:12, fontWeight:700, color:"var(--faint)", flexShrink:0 }}>구·군</span>
+                      <div style={{ display:"flex", gap:6, flexWrap:"nowrap" }}>
+                        {availDistricts.map(d => (
+                          <button
+                            key={d}
+                            onClick={() => setAptDistrict(d)}
+                            style={{
+                              fontSize: 12.5, fontWeight: 600, padding: "5px 11px",
+                              borderRadius: 20, whiteSpace: "nowrap", cursor: "pointer",
+                              background: aptDistrict === d ? "var(--primary)" : "var(--primary-soft)",
+                              color: aptDistrict === d ? "#fff" : "var(--primary-strong)",
+                              border: "none", transition: ".15s",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="filter-row">
                     <div style={{ display:"flex", background:"var(--surface-3)", borderRadius:10, padding:3 }}>
                       {STATUS_OPTS.map(s => (
@@ -635,7 +685,10 @@ export default function Home() {
                         }} onClick={() => setAptStatus(s)}>{s}</button>
                       ))}
                     </div>
-                    <div className="result-count"><b>{filteredApts.length}</b>개 단지</div>
+                    <div className="result-count">
+                      <b>{filteredApts.length}</b>개 단지
+                      {aptDistrict !== "전체" && <span style={{ color:"var(--primary)", marginLeft:6 }}>· {aptDistrict}</span>}
+                    </div>
                   </div>
                 </div>
 
