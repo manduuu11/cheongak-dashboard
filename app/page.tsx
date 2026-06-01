@@ -1,8 +1,7 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useState, useEffect } from "react";
+// force-dynamic은 "use client" + useEffect 기반 fetch에서 불필요 — 제거
+import { useState, useEffect, useCallback } from "react";
 
 // ── 타입 ─────────────────────────────────────
 interface AptItem {
@@ -438,6 +437,7 @@ export default function Home() {
   // 분양정보 상태
   const [aptItems,     setAptItems]     = useState<AptItem[]>([]);
   const [aptLoading,   setAptLoading]   = useState(false);
+  const [aptError,     setAptError]     = useState("");
   const [aptPage,      setAptPage]      = useState(1);
   const [aptTotal,     setAptTotal]     = useState(0);
   const [aptRegion,    setAptRegion]    = useState("전체");
@@ -452,6 +452,7 @@ export default function Home() {
   const [reqstItems,   setReqstItems]   = useState<AgeItem[]>([]);
   const [winnerItems,  setWinnerItems]  = useState<AgeItem[]>([]);
   const [statLoading,  setStatLoading]  = useState(false);
+  const [statError,    setStatError]    = useState("");
   const [selectedRegion, setSelectedRegion] = useState<CompItem | null>(null);
   const [regionFilter, setRegionFilter] = useState("전체");
 
@@ -465,23 +466,24 @@ export default function Home() {
   }, []);
 
   // ── 분양정보 로드 ───────────────────────────
-  useEffect(() => {
+  const loadAptData = useCallback(() => {
     if (tab !== "분양정보") return;
-    let cancelled = false;
+    setAptError("");
     setAptLoading(true);
     const params = new URLSearchParams({ page: String(aptPage), perPage: "20" });
     if (aptRegion !== "전체") params.set("region", aptRegion);
     fetch(`/api/apt-list?${params}`)
-      .then(r => r.json())
-      .then(d => {
-        if (cancelled) return;
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok || d?.error) throw new Error(d?.error ?? `HTTP ${r.status}`);
         setAptItems(d?.data ?? []);
         setAptTotal(d?.totalCount ?? 0);
       })
-      .catch(() => { if (!cancelled) setAptItems([]); })
-      .finally(() => { if (!cancelled) setAptLoading(false); });
-    return () => { cancelled = true; };
+      .catch(e => setAptError(String(e)))
+      .finally(() => setAptLoading(false));
   }, [tab, aptPage, aptRegion]);
+
+  useEffect(() => { loadAptData(); }, [loadAptData]);
 
   // ── 통계 초기 연월 로드 ─────────────────────
   useEffect(() => {
@@ -496,9 +498,9 @@ export default function Home() {
   }, []);
 
   // ── 통계 데이터 로드 ────────────────────────
-  useEffect(() => {
+  const loadStatData = useCallback(() => {
     if (!statDe || tab === "분양정보") return;
-    let cancelled = false;
+    setStatError("");
     setStatLoading(true);
     const qs = `statDe=${statDe}&numOfRows=20`;
     Promise.all([
@@ -506,14 +508,16 @@ export default function Home() {
       fetch(`/api/apt-info?${qs}`).then(r => r.json()),
       fetch(`/api/winners?${qs}`).then(r => r.json()),
     ]).then(([comp, reqst, winner]) => {
-      if (cancelled) return;
+      if (comp?.error || reqst?.error || winner?.error)
+        throw new Error(comp?.error ?? reqst?.error ?? winner?.error);
       setCompItems(comp?.data ?? []);
       setReqstItems(reqst?.data ?? []);
       setWinnerItems(winner?.data ?? []);
-      setStatLoading(false);
-    }).catch(() => { if (!cancelled) setStatLoading(false); });
-    return () => { cancelled = true; };
+    }).catch(e => setStatError(String(e)))
+      .finally(() => setStatLoading(false));
   }, [statDe, tab]);
+
+  useEffect(() => { loadStatData(); }, [loadStatData]);
 
   // ── 분양정보 필터 ───────────────────────────
   const filteredApts = aptItems.filter(apt => {
@@ -635,10 +639,18 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* 에러 배너 */}
+                {aptError && (
+                  <div style={{ background:"var(--heat-1-bg)", border:"1px solid var(--heat-1)", borderRadius:"var(--r-md)", padding:"14px 18px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontSize:14, fontWeight:600, color:"var(--heat-1)" }}>⚠️ {aptError}</span>
+                    <button onClick={loadAptData} style={{ fontSize:13, fontWeight:700, color:"var(--heat-1)", padding:"6px 14px", borderRadius:8, background:"rgba(240,62,62,.12)", cursor:"pointer" }}>재시도</button>
+                  </div>
+                )}
+
                 {/* 카드 그리드 */}
                 {aptLoading ? (
                   <div className="empty">데이터를 불러오는 중...</div>
-                ) : filteredApts.length === 0 ? (
+                ) : filteredApts.length === 0 && !aptError ? (
                   <div className="empty">조회된 단지가 없어요.</div>
                 ) : (
                   <div className="card-grid">
@@ -722,7 +734,13 @@ export default function Home() {
                     </select>
                   </div>
                 </div>
-                {statLoading ? <div className="empty">불러오는 중...</div> : filteredStat.length === 0 ? <div className="empty">조회된 지역이 없어요.</div> : (
+                {statError && (
+                  <div style={{ background:"var(--heat-1-bg)", border:"1px solid var(--heat-1)", borderRadius:"var(--r-md)", padding:"14px 18px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontSize:14, fontWeight:600, color:"var(--heat-1)" }}>⚠️ {statError}</span>
+                    <button onClick={loadStatData} style={{ fontSize:13, fontWeight:700, color:"var(--heat-1)", padding:"6px 14px", borderRadius:8, background:"rgba(240,62,62,.12)", cursor:"pointer" }}>재시도</button>
+                  </div>
+                )}
+                {statLoading ? <div className="empty">불러오는 중...</div> : filteredStat.length === 0 && !statError ? <div className="empty">조회된 지역이 없어요.</div> : (
                   <div className="card-grid">
                     {(filteredStat as CompItem[]).map(item=>(
                       <RegionCard key={item.SUBSCRPT_AREA_CODE} item={item} reqst={getReqst(item.SUBSCRPT_AREA_CODE_NM)} onSelect={()=>setSelectedRegion(item)} />
@@ -793,7 +811,13 @@ export default function Home() {
                     </select>
                   </div>
                 </div>
-                {statLoading ? <div className="empty">불러오는 중...</div> : filteredStat.length === 0 ? <div className="empty">조회된 지역이 없어요.</div> : (
+                {statError && (
+                  <div style={{ background:"var(--heat-1-bg)", border:"1px solid var(--heat-1)", borderRadius:"var(--r-md)", padding:"14px 18px", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontSize:14, fontWeight:600, color:"var(--heat-1)" }}>⚠️ {statError}</span>
+                    <button onClick={loadStatData} style={{ fontSize:13, fontWeight:700, color:"var(--heat-1)", padding:"6px 14px", borderRadius:8, background:"rgba(240,62,62,.12)", cursor:"pointer" }}>재시도</button>
+                  </div>
+                )}
+                {statLoading ? <div className="empty">불러오는 중...</div> : filteredStat.length === 0 && !statError ? <div className="empty">조회된 지역이 없어요.</div> : (
                   <div className="card-grid">
                     {(filteredStat as AgeItem[]).map(item=>(
                       <AgeCard key={item.SUBSCRPT_AREA_CODE_NM} item={item} accent={tab==="신청자"?"var(--sp-1)":"var(--mint)"} />

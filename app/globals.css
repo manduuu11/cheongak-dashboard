@@ -167,4 +167,19 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
   .headline-title{font-size:26px}
   .m-cols{grid-template-columns:1fr!important}
   .mh-stats{grid-template-columns:repeat(2,1fr)}
+  .filterbar{padding:12px 14px}
+  /* 필터 칩 가로 스크롤 */
+  .filter-chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none}
+  .filter-chips::-webkit-scrollbar{display:none}
+  .chip{flex-shrink:0}
+  /* 요약 카드 2열 유지 */
+  .summary{grid-template-columns:repeat(2,1fr)}
+  /* 모달 full-screen */
+  .modal-backdrop{padding:0}
+  .modal{border-radius:0;min-height:100dvh}
+  .modal-hero{padding:24px 20px 20px}
+  .modal-body{padding:20px 20px 40px}
+  .mh-stats{gap:10px}
+  /* 페이지네이션 */
+  .container{padding:20px 16px 60px}
 }
