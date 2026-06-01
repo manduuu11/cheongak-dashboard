@@ -449,7 +449,7 @@ const REGION_DISTRICTS: Record<string, string[]> = {
 };
 
 // ── 메인 ─────────────────────────────────────
-const STATUS_OPTS = ["전체","접수중","접수예정","접수마감"];
+const STATUS_OPTS = ["진행중","접수중","접수예정","접수마감","전체"];
 const REGIONS = ["전체","서울","경기","인천","부산","대구","광주","대전","울산","세종","충남","충북","전남","전북","경남","경북","강원","제주"];
 
 export default function Home() {
@@ -463,7 +463,7 @@ export default function Home() {
   const [aptTotal,     setAptTotal]     = useState(0);
   const [aptRegion,    setAptRegion]    = useState("전체");  // 시/도
   const [aptDistrict,  setAptDistrict]  = useState("전체");  // 구/군
-  const [aptStatus,    setAptStatus]    = useState("전체");
+  const [aptStatus,    setAptStatus]    = useState("진행중");
   const [aptQuery,     setAptQuery]     = useState("");
   const [selectedApt,  setSelectedApt]  = useState<AptItem | null>(null);
 
@@ -566,7 +566,8 @@ export default function Home() {
   // ── 분양정보 필터 ───────────────────────────
   const filteredApts = aptItems.filter(apt => {
     const st = getStatus(apt).label;
-    if (aptStatus !== "전체" && st !== aptStatus) return false;
+    if (aptStatus === "진행중" && st === "접수마감") return false;
+    if (aptStatus !== "전체" && aptStatus !== "진행중" && st !== aptStatus) return false;
     if (aptQuery && !apt.HOUSE_NM.includes(aptQuery) && !apt.HSSPLY_ADRES?.includes(aptQuery)) return false;
     if (aptDistrict !== "전체" && extractDistrict(apt.HSSPLY_ADRES) !== aptDistrict) return false;
     return true;
