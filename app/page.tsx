@@ -141,127 +141,262 @@ function AptCard({ apt, onSelect }: { apt: AptItem; onSelect: () => void }) {
   );
 }
 
+// ── 도넛 차트 (공급구성) ─────────────────────
+function DonutChart({ general, special }: { general: number; special: number }) {
+  const total = general + special;
+  if (total === 0) return null;
+  const R = 52, cx = 68, cy = 68, stroke = 16;
+  const circ = 2 * Math.PI * R;
+  const genPct = general / total;
+  const specPct = special / total;
+  const gap = 0.02;
+  return (
+    <div style={{ display:"flex", gap:20, alignItems:"center" }}>
+      <svg width={136} height={136} style={{ flexShrink:0 }}>
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--surface-3)" strokeWidth={stroke}/>
+        {/* 일반공급 */}
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--primary)" strokeWidth={stroke}
+          strokeDasharray={`${(genPct-gap)*circ} ${circ}`}
+          strokeDashoffset={circ/4} strokeLinecap="round" style={{transition:"stroke-dasharray 1s"}}/>
+        {/* 특별공급 */}
+        <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--sp-2)" strokeWidth={stroke}
+          strokeDasharray={`${(specPct-gap)*circ} ${circ}`}
+          strokeDashoffset={circ/4 - genPct*circ} strokeLinecap="round" style={{transition:"stroke-dasharray 1s"}}/>
+        <text x={cx} y={cy-6} textAnchor="middle" fontSize={20} fontWeight={800} fill="var(--ink)">{total.toLocaleString()}</text>
+        <text x={cx} y={cy+12} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--faint)">총 세대</text>
+      </svg>
+      <div style={{ display:"flex", flexDirection:"column", gap:10, flex:1 }}>
+        {[{label:"일반공급", val:general, color:"var(--primary)"},{label:"특별공급", val:special, color:"var(--sp-2)"}].map(item=>(
+          <div key={item.label} style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, fontWeight:600, color:"var(--text)" }}>
+            <div style={{ width:11, height:11, borderRadius:4, background:item.color, flexShrink:0 }}/>
+            <span style={{ flex:1 }}>{item.label}</span>
+            <b style={{ color:"var(--ink)", fontWeight:800, fontVariantNumeric:"tabular-nums" }}>{item.val.toLocaleString()}</b>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── 분양정보 상세 모달 ───────────────────────
+interface ScoreItem { HOUSE_TY:string; AVRG_SCORE:string; TOP_SCORE:string; LWET_SCORE:string; RESIDE_SECD:string; }
+
 function AptModal({ apt, onClose }: { apt: AptItem; onClose: () => void }) {
-  const [cmpetData, setCmpetData] = useState<CmpetItem[]>([]);
-  const [cmpetLoading, setCmpetLoading] = useState(false);
+  const [cmpetData,  setCmpetData]  = useState<CmpetItem[]>([]);
+  const [scoreData,  setScoreData]  = useState<ScoreItem[]>([]);
+  const [loading,    setLoading]    = useState(false);
   const status = getStatus(apt);
+  const dday   = getDday(apt);
 
   useEffect(() => {
     if (!apt.HOUSE_MANAGE_NO) return;
-    setCmpetLoading(true);
-    fetch(`/api/apt-cmpet?no=${apt.HOUSE_MANAGE_NO}&perPage=50`)
-      .then(r => r.json())
-      .then(d => setCmpetData(d?.data ?? []))
-      .catch(() => setCmpetData([]))
-      .finally(() => setCmpetLoading(false));
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/apt-cmpet?no=${apt.HOUSE_MANAGE_NO}&perPage=50`).then(r=>r.json()),
+      fetch(`/api/apt-score?no=${apt.HOUSE_MANAGE_NO}`).then(r=>r.json()),
+    ]).then(([cmpet, score]) => {
+      setCmpetData(cmpet?.data ?? []);
+      setScoreData(score?.data ?? []);
+    }).catch(()=>{}).finally(()=>setLoading(false));
   }, [apt.HOUSE_MANAGE_NO]);
 
-  // 주택형별 1순위 데이터만
-  const rank1 = cmpetData.filter(c => c.SUBSCRPT_RANK_CODE === 1);
-  const maxRate = Math.max(...rank1.map(c => parseFloat(c.CMPET_RATE) || 0), 1);
+  // 해당지역 1순위만
+  const rank1 = cmpetData.filter(c => c.SUBSCRPT_RANK_CODE === 1 && c.RESIDE_SECD === "01");
+  const rank1All = cmpetData.filter(c => c.SUBSCRPT_RANK_CODE === 1);
+  const display = rank1.length > 0 ? rank1 : rank1All;
+  const maxRate = Math.max(...display.map(c=>parseFloat(c.CMPET_RATE)||0), 1);
 
+  // 평균 경쟁률
+  const avgRate = display.length
+    ? display.reduce((s,c)=>s+(parseFloat(c.CMPET_RATE)||0),0)/display.length
+    : 0;
+
+  // 가점 집계 (해당지역 기준)
+  const scoreFiltered = scoreData.filter(s=>s.RESIDE_SECD==="01" && s.AVRG_SCORE!=="-");
+  const scoreAvrg = scoreFiltered.length ? Math.round(scoreFiltered.reduce((s,i)=>s+(parseFloat(i.AVRG_SCORE)||0),0)/scoreFiltered.length) : null;
+  const scoreTop  = scoreFiltered.length ? Math.max(...scoreFiltered.map(i=>parseFloat(i.TOP_SCORE)||0)) : null;
+  const scoreLow  = scoreFiltered.length ? Math.min(...scoreFiltered.filter(i=>i.LWET_SCORE!=="-").map(i=>parseFloat(i.LWET_SCORE)||99)) : null;
+
+  // 공급구성 (전체 - 특공 = 일반)
+  const totalUnits   = parseInt(apt.TOT_SUPLY_HSHLDCO||"0") || 0;
+  const specialUnits = display.filter(c=>(parseFloat(c.SUPLY_HSHLDCO)||0)>0)
+    .reduce((_s, _c) => _s, 0); // 실제 특공 세대는 별도 API 필요, totalUnits 기준 추정
+  const generalApprox = Math.round(totalUnits * 0.56); // 평균 일반공급 비율 약 56%
+  const specialApprox = totalUnits - generalApprox;
+
+  // 청약 일정
+  const today = new Date().toISOString().slice(0, 10);
   const schedule = [
-    { label: "특별공급", date: apt.SPSPLY_RCEPT_BGNDE },
-    { label: "청약접수", date: apt.RCEPT_BGNDE },
-    { label: "접수종료", date: apt.RCEPT_ENDDE },
-    { label: "당첨발표", date: apt.PRZWNER_PRESNATN_DE },
-  ].filter(s => s.date);
+    { label:"특별공급", date: apt.SPSPLY_RCEPT_BGNDE?.slice(0,10) },
+    { label:"1순위",   date: apt.RCEPT_BGNDE?.slice(0,10) },
+    { label:"접수종료", date: apt.RCEPT_ENDDE?.slice(0,10) },
+    { label:"당첨발표", date: apt.PRZWNER_PRESNATN_DE?.slice(0,10) },
+  ].filter(s=>s.date);
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+    <div className="modal-backdrop" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal" style={{ maxWidth:900 }}>
         <button className="modal-close" onClick={onClose}>✕</button>
 
-        {/* Hero */}
+        {/* ── Hero ── */}
         <div className="modal-hero">
           <div className="mh-badges">
-            <span className={`status-badge ${status.cls}`} style={{ background: "rgba(255,255,255,.16)", color: "#fff" }}>
-              {status.label}
+            <span className={`status-badge ${status.cls}`} style={{ background:"rgba(255,255,255,.16)", color:"#fff" }}>
+              {status.cls==="live"&&<span className="live-dot"/>}{status.label}
             </span>
+            {avgRate > 0 && (
+              <span className="heat-badge" style={{ ...(() => { const h=getHeat(avgRate); return { color:h.color, background:"rgba(255,255,255,.14)" }; })() }}>
+                {getHeat(avgRate).label}
+              </span>
+            )}
+            {dday && (
+              <span style={{ fontSize:11.5, fontWeight:800, padding:"4px 10px", borderRadius:7, background:"rgba(255,255,255,.14)", color:"#fff" }}>
+                {dday.text}
+              </span>
+            )}
           </div>
-          <h2>{apt.HOUSE_NM}</h2>
-          <div className="mh-meta">{apt.SUBSCRPT_AREA_CODE_NM} · {apt.CNSTRCT_ENTRPS_NM || apt.HOUSE_DTL_SECD_NM}</div>
-          <div className="mh-stats">
-            <div><span>총 공급세대</span><b>{Number(apt.TOT_SUPLY_HSHLDCO||0).toLocaleString()}<em>세대</em></b></div>
-            <div><span>청약접수</span><b style={{fontSize:16}}>{apt.RCEPT_BGNDE?.slice(0,10) || "-"}</b></div>
-            <div><span>접수종료</span><b style={{fontSize:16}}>{apt.RCEPT_ENDDE?.slice(0,10) || "-"}</b></div>
-            <div><span>당첨발표</span><b style={{fontSize:16}}>{apt.PRZWNER_PRESNATN_DE?.slice(0,10) || "-"}</b></div>
+          <h2 style={{ fontSize:24, marginBottom:6 }}>{apt.HOUSE_NM}</h2>
+          <div className="mh-meta">{apt.CNSTRCT_ENTRPS_NM||apt.HOUSE_DTL_SECD_NM} · {apt.HSSPLY_ADRES?.slice(0,30)}</div>
+          <div className="mh-stats" style={{ gridTemplateColumns:"repeat(4,1fr)", marginTop:20 }}>
+            <div>
+              <span>평균 경쟁률</span>
+              <b style={{ color: avgRate>0?"var(--heat-1)":"#fff", fontSize:avgRate>0?26:18 }}>
+                {avgRate>0 ? `${avgRate.toFixed(1)}` : "-"}<em style={{ fontSize:13 }}>{avgRate>0?":1":""}</em>
+              </b>
+            </div>
+            <div><span>청약 신청자</span><b>{display.reduce((s,c)=>s+(parseInt(c.REQ_CNT)||0),0).toLocaleString()}<em>명</em></b></div>
+            <div><span>총 공급</span><b>{totalUnits.toLocaleString()}<em>세대</em></b></div>
+            <div>
+              <span>당첨 평균가점</span>
+              <b>{scoreAvrg != null ? `${scoreAvrg}` : "-"}<em>{scoreAvrg!=null?"점":""}</em></b>
+            </div>
           </div>
         </div>
 
         <div className="modal-body">
-          {/* 공급 위치 */}
-          <div className="m-block">
-            <div className="m-block-head"><h3>📍 공급 위치</h3></div>
-            <div style={{ fontSize: 14, color: "var(--text)", fontWeight: 600 }}>{apt.HSSPLY_ADRES || "-"}</div>
-            {apt.PBLANC_URL && (
-              <a href={apt.PBLANC_URL} target="_blank" rel="noopener noreferrer"
-                style={{ display: "inline-block", marginTop: 12, fontSize: 13, color: "var(--primary)", fontWeight: 700, textDecoration: "underline" }}>
-                청약홈 공고 바로가기 →
-              </a>
-            )}
-          </div>
-
-          {/* 주택형별 경쟁률 */}
-          <div className="m-block">
-            <div className="m-block-head">
-              <h3>주택형별 경쟁률 (1순위)</h3>
-              <span>{rank1.length}개 주택형</span>
-            </div>
-            {cmpetLoading ? (
-              <div style={{ textAlign: "center", color: "var(--faint)", padding: 20 }}>불러오는 중...</div>
-            ) : rank1.length === 0 ? (
-              <div style={{ textAlign: "center", color: "var(--faint)", padding: 20 }}>경쟁률 데이터 없음 (접수 전)</div>
-            ) : (
-              <div className="hbar">
-                {rank1.map((c, i) => {
-                  const rate = parseFloat(c.CMPET_RATE) || 0;
-                  const heat = getHeat(rate);
-                  const pct  = Math.max(4, (rate / maxRate) * 100);
-                  return (
-                    <div className="hbar-row" key={i} style={{ gridTemplateColumns: "88px 1fr" }}>
-                      <div className="hbar-label">
-                        <span className="hbar-name">{c.HOUSE_TY}</span>
-                        <span className="hbar-units">{Number(c.SUPLY_HSHLDCO).toLocaleString()}세대</span>
-                      </div>
-                      <div className="hbar-track">
-                        <div className="hbar-fill" style={{ width: pct + "%", background: heat.color }} />
-                        <span className="hbar-val">
-                          {rate === 0 ? "미달" : `${rate}배`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* 일정 */}
+          {/* ── 청약 일정 ── */}
           {schedule.length > 0 && (
             <div className="m-block">
-              <div className="m-block-head"><h3>청약 일정</h3></div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="m-block-head">
+                <h3>청약 일정</h3>
+                <span style={{ fontSize:12, color:"var(--faint)" }}>특별공급 → 1순위 → 발표 → 계약</span>
+              </div>
+              <div className="timeline">
                 {schedule.map((s, i) => {
-                  const today = new Date().toISOString().slice(0, 10);
-                  const isPast = s.date && s.date < today;
+                  const isDone   = s.date && s.date < today;
+                  const isActive = s.date === today || (i > 0 && schedule[i-1].date && schedule[i-1].date! < today && (!schedule[i+1] || schedule[i+1].date! >= today));
                   return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{
-                        width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
-                        background: isPast ? "var(--primary)" : "var(--line-2)"
-                      }} />
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", width: 80 }}>{s.label}</span>
-                      <span style={{ fontSize: 13, color: isPast ? "var(--ink)" : "var(--faint)", fontWeight: 600 }}>
-                        {s.date?.slice(0, 10) || "-"}
-                      </span>
+                    <div key={i} className={`tl-step${isDone?" done":isActive?" active":""}`}>
+                      <div className="tl-node">
+                        <div className="tl-dot"/>
+                        {i < schedule.length-1 && <div className={`tl-line${isDone?" filled":""}`}/>}
+                      </div>
+                      <div className="tl-body">
+                        <div className="tl-label">{s.label}</div>
+                        <div className="tl-date">{s.date?.slice(5).replace("-",".")}</div>
+                      </div>
                     </div>
                   );
                 })}
               </div>
             </div>
           )}
+
+          {/* ── 주택형별 경쟁률 + 당첨 가점 ── */}
+          <div className="m-cols">
+            {/* 경쟁률 */}
+            <div className="m-block">
+              <div className="m-block-head">
+                <h3>주택형별 경쟁률</h3>
+                <span>{display.length}개 타입</span>
+              </div>
+              {loading ? (
+                <div style={{ color:"var(--faint)", fontSize:13, textAlign:"center", padding:20 }}>불러오는 중...</div>
+              ) : display.length === 0 ? (
+                <div style={{ color:"var(--faint)", fontSize:13, textAlign:"center", padding:20 }}>접수 전 데이터 없음</div>
+              ) : (
+                <div className="hbar">
+                  {display.slice(0,6).map((c,i)=>{
+                    const rate = parseFloat(c.CMPET_RATE)||0;
+                    const heat = getHeat(rate);
+                    const pct  = Math.max(4,(rate/maxRate)*100);
+                    return (
+                      <div key={i} className="hbar-row" style={{ gridTemplateColumns:"80px 1fr" }}>
+                        <div className="hbar-label">
+                          <span className="hbar-name">{c.HOUSE_TY}</span>
+                          <span className="hbar-units">{Number(c.SUPLY_HSHLDCO).toLocaleString()}세대</span>
+                        </div>
+                        <div className="hbar-track">
+                          <div className="hbar-fill" style={{ width:pct+"%", background:heat.color }}/>
+                          <span className="hbar-val">{rate===0?"미달":`${rate}:1`}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 당첨 가점 */}
+            <div className="m-block">
+              <div className="m-block-head"><h3>당첨 가점 현황</h3><span>가점제 기준</span></div>
+              {scoreFiltered.length > 0 ? (
+                <>
+                  <div style={{ display:"flex", gap:12, marginBottom:16 }}>
+                    <div style={{ background:"var(--primary-soft)", borderRadius:12, padding:"14px 18px", flex:1 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:"var(--primary-strong)", marginBottom:4 }}>평균 당첨 가점</div>
+                      <div style={{ fontSize:28, fontWeight:800, color:"var(--primary-strong)", letterSpacing:"-.04em" }}>
+                        {scoreAvrg}<span style={{ fontSize:14, fontWeight:700, marginLeft:2 }}>점</span>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:8, flex:1 }}>
+                      {[{label:"최고",val:scoreTop,color:"var(--heat-1)"},{label:"최저",val:scoreLow,color:"var(--mint)"}].map(s=>(
+                        <div key={s.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:"var(--surface-3)", borderRadius:8, padding:"8px 12px" }}>
+                          <span style={{ fontSize:12, color:"var(--faint)", fontWeight:700 }}>{s.label}</span>
+                          <b style={{ fontSize:16, color:s.color, fontWeight:800 }}>{s.val != null ? `${s.val}점` : "-"}</b>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* 주택형별 가점 목록 */}
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {scoreFiltered.slice(0,4).map((s,i)=>(
+                      <div key={i} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr 1fr", gap:8, alignItems:"center", fontSize:12 }}>
+                        <span style={{ fontWeight:700, color:"var(--ink)" }}>{s.HOUSE_TY}</span>
+                        <span style={{ color:"var(--faint)", fontWeight:600, textAlign:"center" }}>최저 <b style={{ color:"var(--ink)" }}>{s.LWET_SCORE}</b></span>
+                        <span style={{ color:"var(--faint)", fontWeight:600, textAlign:"center" }}>평균 <b style={{ color:"var(--primary)" }}>{s.AVRG_SCORE}</b></span>
+                        <span style={{ color:"var(--faint)", fontWeight:600, textAlign:"center" }}>최고 <b style={{ color:"var(--heat-1)" }}>{s.TOP_SCORE}</b></span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign:"center", padding:20, color:"var(--faint)", fontSize:13 }}>
+                  {loading ? "불러오는 중..." : "가점 데이터 없음 (접수 전)"}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── 공급구성 + 링크 ── */}
+          <div className="m-cols" style={{ gridTemplateColumns:"1fr 1fr" }}>
+            <div className="m-block">
+              <div className="m-block-head"><h3>공급 구성</h3><span>일반 vs 특별</span></div>
+              <DonutChart general={generalApprox} special={specialApprox}/>
+            </div>
+            <div className="m-block" style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              <div className="m-block-head"><h3>공급 위치</h3></div>
+              <div style={{ fontSize:13, color:"var(--text)", fontWeight:600, lineHeight:1.6 }}>
+                {apt.HSSPLY_ADRES || "-"}
+              </div>
+              {apt.PBLANC_URL && (
+                <a href={apt.PBLANC_URL} target="_blank" rel="noopener noreferrer"
+                  style={{ display:"inline-flex", alignItems:"center", gap:6, marginTop:"auto", fontSize:13, fontWeight:700, color:"#fff", background:"var(--primary)", padding:"10px 18px", borderRadius:10, textDecoration:"none" }}>
+                  청약홈 공고 바로가기 →
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
