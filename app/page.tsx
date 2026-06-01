@@ -66,6 +66,18 @@ function fmtDate(s: string) {
   return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
 }
 
+// "046.8800" → "46㎡"  /  "084.9543T" → "84㎡T"  /  "059.9500A" → "59㎡A"
+function fmtHouseTy(ty: string): string {
+  if (!ty) return ty;
+  const m = ty.match(/^0*(\d+)\.(\d+)([A-Z]*)$/);
+  if (!m) return ty;
+  const area  = parseInt(m[1]);          // 앞자리 (046 → 46)
+  const deci  = parseFloat(`0.${m[2]}`); // 소수점
+  const suffix= m[3];                    // 알파벳 (A, B, T 등)
+  const display = (deci > 0 && deci < 1) ? `${area}.${m[2].replace(/0+$/, "")}` : `${area}`;
+  return `${display}㎡${suffix}`;
+}
+
 function getStatus(apt: AptItem): { label: string; cls: string } {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const begin = apt.RCEPT_BGNDE?.replace(/-/g, "") ?? "";
@@ -275,26 +287,45 @@ function AptModal({ apt, onClose }: { apt: AptItem; onClose: () => void }) {
         </div>
 
         <div className="modal-body">
-          {/* ── 청약 일정 ── */}
+          {/* ── 청약 일정 타임라인 ── */}
           {schedule.length > 0 && (
             <div className="m-block">
               <div className="m-block-head">
                 <h3>청약 일정</h3>
                 <span style={{ fontSize:12, color:"var(--faint)" }}>특별공급 → 1순위 → 발표 → 계약</span>
               </div>
-              <div className="timeline">
+              <div style={{ display:"flex", alignItems:"flex-start", overflowX:"auto" }}>
                 {schedule.map((s, i) => {
-                  const isDone   = s.date && s.date < today;
-                  const isActive = s.date === today || (i > 0 && schedule[i-1].date && schedule[i-1].date! < today && (!schedule[i+1] || schedule[i+1].date! >= today));
+                  const isDone   = !!(s.date && s.date < today);
+                  const isActive = !isDone && !!(i > 0 && schedule[i-1].date && schedule[i-1].date! < today);
+                  const dotColor = isDone ? "var(--primary)" : isActive ? "#fff" : "var(--line-2)";
+                  const dotBorder= isActive ? "0 0 0 4px var(--primary), 0 0 0 7px var(--primary-soft)" : "none";
                   return (
-                    <div key={i} className={`tl-step${isDone?" done":isActive?" active":""}`}>
-                      <div className="tl-node">
-                        <div className="tl-dot"/>
-                        {i < schedule.length-1 && <div className={`tl-line${isDone?" filled":""}`}/>}
+                    <div key={i} style={{ flex:1, minWidth:80, display:"flex", flexDirection:"column", gap:10 }}>
+                      {/* 노드 + 연결선 */}
+                      <div style={{ position:"relative", height:16, display:"flex", alignItems:"center" }}>
+                        <div style={{
+                          width:14, height:14, borderRadius:"50%", flexShrink:0, zIndex:2, position:"relative",
+                          background: dotColor,
+                          boxShadow: dotBorder,
+                          border: isDone ? "none" : "3px solid var(--line-2)",
+                          animation: isActive ? "pulse 1.6s ease infinite" : "none",
+                        }}/>
+                        {i < schedule.length-1 && (
+                          <div style={{
+                            position:"absolute", left:14, right:0, height:3,
+                            background: isDone ? "var(--primary)" : "var(--line-2)",
+                          }}/>
+                        )}
                       </div>
-                      <div className="tl-body">
-                        <div className="tl-label">{s.label}</div>
-                        <div className="tl-date">{s.date?.slice(5).replace("-",".")}</div>
+                      {/* 텍스트 */}
+                      <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                        <span style={{ fontSize:13, fontWeight:700, color: isActive?"var(--primary)":isDone?"var(--ink)":"var(--text)" }}>
+                          {s.label}
+                        </span>
+                        <span style={{ fontSize:12.5, fontWeight:700, color: isDone?"var(--primary)":"var(--faint)", fontVariantNumeric:"tabular-nums" }}>
+                          {s.date?.slice(5).replace("-",".")}
+                        </span>
                       </div>
                     </div>
                   );
@@ -324,7 +355,7 @@ function AptModal({ apt, onClose }: { apt: AptItem; onClose: () => void }) {
                     return (
                       <div key={i} className="hbar-row" style={{ gridTemplateColumns:"80px 1fr" }}>
                         <div className="hbar-label">
-                          <span className="hbar-name">{c.HOUSE_TY}</span>
+                          <span className="hbar-name">{fmtHouseTy(c.HOUSE_TY)}</span>
                           <span className="hbar-units">{Number(c.SUPLY_HSHLDCO).toLocaleString()}세대</span>
                         </div>
                         <div className="hbar-track">
@@ -363,7 +394,7 @@ function AptModal({ apt, onClose }: { apt: AptItem; onClose: () => void }) {
                   <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                     {scoreFiltered.slice(0,4).map((s,i)=>(
                       <div key={i} style={{ display:"grid", gridTemplateColumns:"80px 1fr 1fr 1fr", gap:8, alignItems:"center", fontSize:12 }}>
-                        <span style={{ fontWeight:700, color:"var(--ink)" }}>{s.HOUSE_TY}</span>
+                        <span style={{ fontWeight:700, color:"var(--ink)" }}>{fmtHouseTy(s.HOUSE_TY)}</span>
                         <span style={{ color:"var(--faint)", fontWeight:600, textAlign:"center" }}>최저 <b style={{ color:"var(--ink)" }}>{s.LWET_SCORE}</b></span>
                         <span style={{ color:"var(--faint)", fontWeight:600, textAlign:"center" }}>평균 <b style={{ color:"var(--primary)" }}>{s.AVRG_SCORE}</b></span>
                         <span style={{ color:"var(--faint)", fontWeight:600, textAlign:"center" }}>최고 <b style={{ color:"var(--heat-1)" }}>{s.TOP_SCORE}</b></span>
